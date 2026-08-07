@@ -797,3 +797,30 @@
   font-size: 11px;
   color: var(--text-muted);
 }
+
+/* ---------- Deployment panel ---------- */
+
+.deployment-style-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.deployment-style-badge.deployment-style-api {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.deployment-style-badge.deployment-style-batch {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.deployment-style-reason {
+  font-weight: 400;
+  color: var(--text-muted);
+}

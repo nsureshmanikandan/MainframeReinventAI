@@ -6,6 +6,7 @@ import CodeBlock from "./CodeBlock";
 import MarkdownBlock from "./MarkdownBlock";
 import QualityScorePanel from "./QualityScorePanel";
 import StatusBadge from "./StatusBadge";
+import DeploymentPanel from "./DeploymentPanel";
 import TestExecutionPanel from "./TestExecutionPanel";
 import TracesPanel from "./TracesPanel";
 
@@ -28,6 +29,7 @@ const BACKEND_LABEL: Record<Backend, string> = {
 const EXTRA_TABS = [
   { key: "quality_score", label: "Quality Score" },
   { key: "test_execution", label: "Test Execution" },
+  { key: "deployment", label: "Deployment" },
   { key: "traces", label: "Traces" },
   { key: "refinement_log", label: "Refinement Log" },
 ];
@@ -135,6 +137,14 @@ export default function BackendColumn({
         )}
         {activeTab === "test_execution" && (
           <TestExecutionPanel
+            backend={backend}
+            filename={filename}
+            result={result}
+            onRefresh={onRefreshResults}
+          />
+        )}
+        {activeTab === "deployment" && (
+          <DeploymentPanel
             backend={backend}
             filename={filename}
             result={result}

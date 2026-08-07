@@ -1,4 +1,11 @@
-import type { AzureModelOption, Backend, CobolFile, ResultsByBackend, TraceSpan } from "./types";
+import type {
+  AzureModelOption,
+  Backend,
+  CobolFile,
+  DeploymentStyle,
+  ResultsByBackend,
+  TraceSpan,
+} from "./types";
 
 const API_BASE = "/api";
 
@@ -89,6 +96,31 @@ export async function triggerTestExecution(
     const body = await resp.json().catch(() => ({}));
     throw new Error(body.detail || `Failed to start test execution: ${resp.status}`);
   }
+}
+
+export async function getDeploymentStyle(filename: string): Promise<DeploymentStyle> {
+  const resp = await fetch(`${API_BASE}/deployment-style/${encodeURIComponent(filename)}`);
+  if (!resp.ok) throw new Error(`Failed to load deployment style: ${resp.status}`);
+  return resp.json();
+}
+
+export async function triggerGenerateWrapper(
+  filename: string,
+  backend: Backend | "both"
+): Promise<void> {
+  const resp = await fetch(`${API_BASE}/generate-wrapper`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename, backend }),
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.detail || `Failed to start wrapper generation: ${resp.status}`);
+  }
+}
+
+export function downloadWrapperUrl(filename: string, backend: Backend, language: "python" | "java"): string {
+  return `${API_BASE}/download-wrapper/${encodeURIComponent(filename)}?backend=${backend}&language=${language}`;
 }
 
 export async function getTraces(filename: string, backend?: Backend): Promise<TraceSpan[]> {

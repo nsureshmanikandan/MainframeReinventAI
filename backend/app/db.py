@@ -18,6 +18,9 @@ FIELDS = [
     "python_tests",
     "python_test_results",
     "test_execution_status",
+    "python_wrapper",
+    "java_wrapper",
+    "wrapper_status",
 ]
 
 

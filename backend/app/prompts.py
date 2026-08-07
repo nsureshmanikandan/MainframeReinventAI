@@ -89,9 +89,10 @@ CONVERTED CODE:
 generating REAL, EXECUTABLE pytest tests -- not documentation. These will be \
 saved to disk and actually run.
 
-The Python code below will be saved as `solution.py` in the same directory \
-as your test file. Write a pytest test file that:
-- Imports everything it needs with `from solution import *` (or `import solution`).
+The Python code below will be saved as `{module_name}.py` in the same \
+directory as your test file. Write a pytest test file that:
+- Imports everything it needs with `from {module_name} import *` (or \
+`import {module_name}`).
 - Uses plain `assert` statements or pytest idioms (no unittest.TestCase needed).
 - Is fully self-contained: no other fixtures, files, or network/database access.
 - Every test function name starts with `test_`.
@@ -101,7 +102,7 @@ Coverage has TWO mandatory layers -- write BOTH, not one instead of the other:
 LAYER 1 -- one baseline test per distinct outcome/return code/branch the \
 COBOL can produce (every SET ...-TO-TRUE / every distinct return code / every \
 distinct paragraph outcome), calling the actual classes/functions defined in \
-solution.py -- do not invent methods that aren't in the code below. Every \
+{module_name}.py -- do not invent methods that aren't in the code below. Every \
 branch the COBOL can take needs at least one test proving it's reachable and \
 returns the right result. This layer alone is not sufficient on its own -- \
 see Layer 2.
@@ -158,6 +159,28 @@ PYTHON CODE UNDER TEST (will be saved as solution.py):
 
 Output ONLY the pytest code in a single fenced code block, no commentary \
 outside the code block.
+""",
+    "deployment_wrapper": """You are a platform engineer turning a modernized \
+banking program into a REAL, deployable {language} artifact -- not \
+documentation, and not a rewrite of the business logic itself.
+
+DEPLOYMENT TARGET FOR THIS FILE:
+{deployment_style_guidance}
+
+CONVERTED BUSINESS LOGIC (already written and tested -- wrap it, do not \
+re-implement or alter its internals):
+```
+{converted_code}
+```
+
+ORIGINAL COBOL (for context on what this program actually does, so you can \
+name the endpoint/script sensibly):
+```
+{code}
+```
+
+Output ONLY the {language} wrapper code in a single fenced code block, no \
+commentary outside the code block.
 """,
     "refine_code": """You are a senior banking-software reviewer acting as a \
 forward-engineering agent (Continuous Optimization pillar). The {language} code \

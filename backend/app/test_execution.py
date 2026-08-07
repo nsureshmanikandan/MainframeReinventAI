@@ -18,20 +18,30 @@ import tempfile
 
 PYTEST_TIMEOUT_SECONDS = 30
 
-_RESULT_LINE_RE = re.compile(
-    r"^test_solution\.py::(.+?)\s+(PASSED|FAILED|ERROR)\s+\[\s*\d+%\]\s*$"
-)
 
+def execute_python_tests(
+    python_code: str, pytest_code: str, module_name: str, timeout: int = PYTEST_TIMEOUT_SECONDS
+) -> dict:
+    """Runs pytest_code against python_code in a real subprocess.
 
-def execute_python_tests(python_code: str, pytest_code: str, timeout: int = PYTEST_TIMEOUT_SECONDS) -> dict:
+    module_name must match the name the exported ZIP saves the converted
+    Python file as (`{stem.lower()}.py`) -- the pytest file's own `from
+    {module_name} import ...` line only works, both here and after a user
+    downloads the export, if the two agree on that name.
+    """
+    test_filename = f"test_{module_name}.py"
+    result_line_re = re.compile(
+        rf"^{re.escape(test_filename)}::(.+?)\s+(PASSED|FAILED|ERROR)\s+\[\s*\d+%\]\s*$"
+    )
+
     with tempfile.TemporaryDirectory(prefix="mfr_pytest_") as tmp:
         tmp_path = pathlib.Path(tmp)
-        (tmp_path / "solution.py").write_text(python_code, encoding="utf-8")
-        (tmp_path / "test_solution.py").write_text(pytest_code, encoding="utf-8")
+        (tmp_path / f"{module_name}.py").write_text(python_code, encoding="utf-8")
+        (tmp_path / test_filename).write_text(pytest_code, encoding="utf-8")
 
         try:
             proc = subprocess.run(
-                [sys.executable, "-m", "pytest", "test_solution.py",
+                [sys.executable, "-m", "pytest", test_filename,
                  "-v", "--tb=short", "--no-header", "-p", "no:cacheprovider"],
                 cwd=tmp_path,
                 capture_output=True,
@@ -61,7 +71,7 @@ def execute_python_tests(python_code: str, pytest_code: str, timeout: int = PYTE
 
         tests = []
         for line in output.splitlines():
-            match = _RESULT_LINE_RE.match(line.strip())
+            match = result_line_re.match(line.strip())
             if match:
                 tests.append({"name": match.group(1), "outcome": match.group(2)})
 

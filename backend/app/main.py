@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from . import db, test_execution, tracing
+from .deployment_classification import get_deployment_style, get_wrapper_guidance
 from .known_issues import get_known_issues
 from .llm_clients import AVAILABLE_AZURE_MODELS, AZURE_DEFAULT_MODEL, BACKENDS, GEMINI_MODEL
 from .prompts import PROMPTS, extract_code_block
@@ -193,12 +194,14 @@ def refine_migration(filename: str, backend_name: str, cycles: int, azure_model:
 
 
 def run_test_execution(filename: str, backend_name: str):
+    stem = pathlib.Path(filename).stem
     cbl_path = INPUT_DIR / filename
     code = cbl_path.read_text(encoding="utf-8")
     call_fn = BACKENDS[backend_name]
     result = db.get_result(filename, backend_name) or {}
     model = result.get("model_used")
     python_code = result.get("python_code") or ""
+    module_name = stem.lower()
 
     py_tests = result.get("python_tests") or ""
     py_results = None
@@ -209,7 +212,7 @@ def run_test_execution(filename: str, backend_name: str):
                 with tracing.traced_stage("generate_pytest", filename, backend_name, model=model):
                     raw, err = run_pillar(
                         call_fn, code, "pytest_tests", max_tokens=6000, model=model,
-                        converted_code=python_code,
+                        converted_code=python_code, module_name=module_name,
                     )
                 py_tests = extract_code_block(raw) if raw else ""
                 if not py_tests and err:
@@ -220,7 +223,7 @@ def run_test_execution(filename: str, backend_name: str):
                     return
 
             with tracing.traced_stage("run_pytest", filename, backend_name, model=model):
-                py_results = test_execution.execute_python_tests(python_code, py_tests)
+                py_results = test_execution.execute_python_tests(python_code, py_tests, module_name)
 
     db.upsert_result(
         filename, backend_name, status=result.get("status", "completed"),
@@ -230,9 +233,60 @@ def run_test_execution(filename: str, backend_name: str):
     )
 
 
+def run_generate_wrapper(filename: str, backend_name: str):
+    stem = pathlib.Path(filename).stem
+    cbl_path = INPUT_DIR / filename
+    code = cbl_path.read_text(encoding="utf-8")
+    call_fn = BACKENDS[backend_name]
+    result = db.get_result(filename, backend_name) or {}
+    model = result.get("model_used")
+    java_code = result.get("java_code") or ""
+    python_code = result.get("python_code") or ""
+    style, _reason = get_deployment_style(stem)
+    module_name = stem.lower()
+
+    python_wrapper = ""
+    java_wrapper = ""
+
+    with tracing.traced_stage("generate_wrapper", filename, backend_name, model=model, style=style):
+        if python_code:
+            with tracing.traced_stage("generate_wrapper_python", filename, backend_name, model=model):
+                guidance = get_wrapper_guidance("python", style, module_name)
+                raw, err = run_pillar(
+                    call_fn, code, "deployment_wrapper", max_tokens=8000, model=model,
+                    language="Python", deployment_style_guidance=guidance,
+                    converted_code=python_code,
+                )
+                python_wrapper = extract_code_block(raw) if raw else ""
+
+        if java_code:
+            with tracing.traced_stage("generate_wrapper_java", filename, backend_name, model=model):
+                guidance = get_wrapper_guidance("java", style, module_name)
+                raw, err = run_pillar(
+                    call_fn, code, "deployment_wrapper", max_tokens=8000, model=model,
+                    language="Java", deployment_style_guidance=guidance,
+                    converted_code=java_code,
+                )
+                java_wrapper = extract_code_block(raw) if raw else ""
+
+    db.upsert_result(
+        filename, backend_name, status=result.get("status", "completed"),
+        wrapper_status="completed",
+        python_wrapper=python_wrapper,
+        java_wrapper=java_wrapper,
+    )
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/deployment-style/{filename}")
+def deployment_style(filename: str):
+    stem = pathlib.Path(filename).stem
+    style, reason = get_deployment_style(stem)
+    return {"style": style, "reason": reason}
 
 
 class InputDirRequest(BaseModel):
@@ -387,6 +441,65 @@ def get_traces(filename: str, backend: str | None = None):
     return db.get_spans(filename, backend)
 
 
+class WrapperRequest(BaseModel):
+    filename: str
+    backend: str  # "azure" | "gemini" | "both"
+
+
+@app.post("/api/generate-wrapper")
+def generate_wrapper(req: WrapperRequest):
+    cbl_path = INPUT_DIR / req.filename
+    if not cbl_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    backend_names = list(BACKENDS.keys()) if req.backend == "both" else [req.backend]
+    if any(b not in BACKENDS for b in backend_names):
+        raise HTTPException(status_code=400, detail="Unknown backend")
+
+    for backend_name in backend_names:
+        existing = db.get_result(req.filename, backend_name)
+        if not existing or not (existing.get("java_code") or existing.get("python_code")):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Run a migration for {backend_name} before generating a deployment wrapper",
+            )
+        db.upsert_result(
+            req.filename, backend_name, status=existing["status"],
+            wrapper_status="running",
+        )
+        threading.Thread(
+            target=run_generate_wrapper,
+            args=(req.filename, backend_name),
+            daemon=True,
+        ).start()
+
+    return {"status": "started", "backends": backend_names}
+
+
+@app.get("/api/download-wrapper/{filename}")
+def download_wrapper(filename: str, backend: str, language: str):
+    stem = pathlib.Path(filename).stem
+    result = db.get_result(filename, backend)
+    if not result:
+        raise HTTPException(status_code=404, detail="No result for this file/backend")
+
+    field = "python_wrapper" if language == "python" else "java_wrapper"
+    content = result.get(field)
+    if not content:
+        raise HTTPException(status_code=404, detail="Wrapper not generated yet")
+
+    style, _ = get_deployment_style(stem)
+    ext = "py" if language == "python" else "java"
+    suffix = "service" if style == "api" else "batch_job"
+    out_name = f"{stem.lower()}_{suffix}.{ext}"
+
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{out_name}"'},
+    )
+
+
 def _java_class_name(stem: str) -> str:
     return "".join(part.capitalize() for part in stem.split("_"))
 
@@ -410,6 +523,18 @@ def _add_result_to_zip(zf: zipfile.ZipFile, stem: str, backend_name: str, result
 
     if result.get("python_code"):
         zf.writestr(f"{base}/python/{stem.lower()}.py", result["python_code"])
+
+    if result.get("python_tests"):
+        zf.writestr(f"{base}/python/test_{stem.lower()}.py", result["python_tests"])
+
+    style, _reason = get_deployment_style(stem)
+    suffix = "service" if style == "api" else "batch_job"
+
+    if result.get("python_wrapper"):
+        zf.writestr(f"{base}/python/{stem.lower()}_{suffix}.py", result["python_wrapper"])
+
+    if result.get("java_wrapper"):
+        zf.writestr(f"{base}/java/com/amex/modernized/{_java_class_name(stem)}{suffix.title().replace('_', '')}.java", result["java_wrapper"])
 
 
 @app.get("/api/export/{filename}")

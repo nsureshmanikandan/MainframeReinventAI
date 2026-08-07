@@ -26,6 +26,14 @@ export interface MigrationResult {
   python_tests?: string | null;
   python_test_results?: string | null;
   test_execution_status?: string | null;
+  python_wrapper?: string | null;
+  java_wrapper?: string | null;
+  wrapper_status?: string | null;
+}
+
+export interface DeploymentStyle {
+  style: "api" | "batch";
+  reason: string;
 }
 
 export type ResultsByBackend = Partial<Record<Backend, MigrationResult>>;

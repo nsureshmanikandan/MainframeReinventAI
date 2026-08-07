@@ -92,12 +92,39 @@ saved to disk and actually run.
 The Python code below will be saved as `solution.py` in the same directory \
 as your test file. Write a pytest test file that:
 - Imports everything it needs with `from solution import *` (or `import solution`).
-- Exercises the real business rules from the COBOL source below (normal, \
-boundary, and edge cases) by calling the actual classes/functions defined in \
-solution.py -- do not invent methods that aren't in the code below.
 - Uses plain `assert` statements or pytest idioms (no unittest.TestCase needed).
 - Is fully self-contained: no other fixtures, files, or network/database access.
 - Every test function name starts with `test_`.
+
+Coverage has TWO mandatory layers -- write BOTH, not one instead of the other:
+
+LAYER 1 -- one baseline test per distinct outcome/return code/branch the \
+COBOL can produce (every SET ...-TO-TRUE / every distinct return code / every \
+distinct paragraph outcome), calling the actual classes/functions defined in \
+solution.py -- do not invent methods that aren't in the code below. Every \
+branch the COBOL can take needs at least one test proving it's reachable and \
+returns the right result. This layer alone is not sufficient on its own -- \
+see Layer 2.
+
+LAYER 2 -- for every numeric threshold/limit comparison in the COBOL (every \
+`IF field > limit`, `>=`, `<`, `<=` against a literal or a WS-...-LIMIT/ \
+THRESHOLD field), ADD two more test functions on top of (not instead of) that \
+rule's Layer-1 test:
+1. A test with the value exactly AT the boundary (the boundary case itself \
+belongs to whichever branch the COBOL's own comparison operator puts it in \
+-- e.g. `>` means the boundary value itself is still accepted, `>=` means it \
+is rejected).
+2. A test with the value one cent/one unit PAST the boundary, landing in the \
+other branch.
+Also add a test for any priority/ordering rule between two failure conditions \
+(e.g. if both a limit-exceeded and an insufficient-funds condition could \
+apply, prove which one the COBOL actually reports first).
+
+Before finishing, count the distinct return codes / outcomes in the COBOL and \
+verify your test file has at least one test for every single one of them --  \
+a thorough boundary suite that silently drops coverage of an entire rule \
+(e.g. never testing the sanctioned-country check at all) is still an \
+incomplete test suite.
 
 If the Python code defines a class with a constructor, instantiate it with \
 realistic values before asserting on results. If it raises exceptions for \

@@ -1,0 +1,235 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. STMTGEN.
+       AUTHOR. ACCENTURE-MAINFRAME-REINVENTION.
+      *****************************************************************
+      * MONTHLY STATEMENT GENERATION                                  *
+      *                                                                *
+      * CALCULATES FINANCE CHARGES ACROSS THREE SEPARATELY-RATED      *
+      * BALANCE SEGMENTS (PURCHASES, CASH ADVANCE, PROMOTIONAL        *
+      * BALANCE TRANSFER), ALLOCATES THE CARDMEMBER'S PAYMENT ACROSS  *
+      * SEGMENTS IN CARD-ACT-COMPLIANT HIGHEST-APR-FIRST ORDER,       *
+      * COMPUTES THE MINIMUM PAYMENT DUE, AND ASSESSES OVER-LIMIT     *
+      * AND LATE FEES.                                                *
+      *****************************************************************
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+
+      *---------------------------------------------------------------*
+      * ACCOUNT HEADER                                                *
+      *---------------------------------------------------------------*
+       01  WS-ACCOUNT.
+           05  WS-CARD-NUMBER               PIC X(16).
+           05  WS-CREDIT-LIMIT               PIC 9(9)V99 COMP-3.
+           05  WS-PREVIOUS-BALANCE           PIC 9(9)V99 COMP-3.
+           05  WS-STATEMENT-CYCLE-DATE       PIC X(8).
+           05  WS-PAYMENT-DUE-DT             PIC X(8).
+           05  WS-DAYS-PAST-DUE              PIC 9(3)      COMP-3.
+           05  WS-CONSECUTIVE-LATE-MONTHS    PIC 9(2)      COMP-3.
+           05  WS-DELINQUENT-OVER-90-DAYS    PIC X(1)      VALUE 'N'.
+               88  DELINQUENT-OVER-90           VALUE 'Y'.
+           05  WS-OVER-LIMIT-OPT-IN          PIC X(1)      VALUE 'N'.
+               88  OVER-LIMIT-OPTED-IN           VALUE 'Y'.
+
+      *---------------------------------------------------------------*
+      * BALANCE SEGMENT 1: PURCHASES                                  *
+      *---------------------------------------------------------------*
+       01  WS-PURCHASE-SEGMENT.
+           05  WS-PUR-AVG-DAILY-BALANCE      PIC 9(9)V99 COMP-3.
+           05  WS-PUR-ANNUAL-PCT-RATE        PIC 9(2)V999 COMP-3.
+           05  WS-PUR-FINANCE-CHARGE         PIC 9(7)V99 COMP-3.
+
+      *---------------------------------------------------------------*
+      * BALANCE SEGMENT 2: CASH ADVANCE (HIGHER APR, NO GRACE PERIOD) *
+      *---------------------------------------------------------------*
+       01  WS-CASH-ADVANCE-SEGMENT.
+           05  WS-CA-AVG-DAILY-BALANCE       PIC 9(9)V99 COMP-3.
+           05  WS-CA-ANNUAL-PCT-RATE         PIC 9(2)V999 COMP-3.
+           05  WS-CA-FINANCE-CHARGE          PIC 9(7)V99 COMP-3.
+
+      *---------------------------------------------------------------*
+      * BALANCE SEGMENT 3: PROMOTIONAL BALANCE TRANSFER               *
+      *---------------------------------------------------------------*
+       01  WS-BALANCE-TRANSFER-SEGMENT.
+           05  WS-BT-AVG-DAILY-BALANCE       PIC 9(9)V99 COMP-3.
+           05  WS-BT-PROMO-APR               PIC 9(2)V999 COMP-3.
+           05  WS-BT-STANDARD-APR            PIC 9(2)V999 COMP-3.
+           05  WS-BT-PROMO-END-DATE          PIC X(8).
+           05  WS-BT-FINANCE-CHARGE          PIC 9(7)V99 COMP-3.
+           05  WS-BT-PROMO-EXPIRED-FLAG      PIC X(1)      VALUE 'N'.
+               88  BT-PROMO-EXPIRED             VALUE 'Y'.
+
+      *---------------------------------------------------------------*
+      * PAYMENT ALLOCATION (CARD ACT SECTION 104: PAYMENTS ABOVE THE  *
+      * MINIMUM MUST BE APPLIED TO THE HIGHEST-APR BALANCE FIRST)     *
+      *---------------------------------------------------------------*
+       01  WS-PAYMENT-ALLOCATION.
+           05  WS-PAYMENT-RECEIVED-AMOUNT    PIC 9(9)V99 COMP-3.
+           05  WS-REMAINING-PAYMENT          PIC 9(9)V99 COMP-3.
+           05  WS-APPLIED-TO-CASH-ADVANCE    PIC 9(9)V99 COMP-3 VALUE ZERO.
+           05  WS-APPLIED-TO-BAL-TRANSFER    PIC 9(9)V99 COMP-3 VALUE ZERO.
+           05  WS-APPLIED-TO-PURCHASES       PIC 9(9)V99 COMP-3 VALUE ZERO.
+
+      *---------------------------------------------------------------*
+      * FEES AND MINIMUM PAYMENT                                      *
+      *---------------------------------------------------------------*
+       01  WS-CALCULATED-CHARGES.
+           05  WS-TOTAL-FINANCE-CHARGE       PIC 9(7)V99 COMP-3.
+           05  WS-NEW-BALANCE                PIC 9(9)V99 COMP-3.
+           05  WS-MINIMUM-PAYMENT             PIC 9(7)V99 COMP-3.
+           05  WS-LATE-FEE                    PIC 9(5)V99 COMP-3 VALUE ZERO.
+           05  WS-OVER-LIMIT-FEE              PIC 9(5)V99 COMP-3 VALUE ZERO.
+           05  WS-ANNUAL-FEE-DUE-THIS-CYCLE   PIC 9(3)V99 COMP-3 VALUE ZERO.
+
+       01  WS-MIN-PAYMENT-FLOOR            PIC 9(3)V99 COMP-3 VALUE 025.00.
+       01  WS-MIN-PAYMENT-PERCENT          PIC 9V999     COMP-3 VALUE 0.020.
+       01  WS-DELINQUENCY-SURCHARGE-PCT    PIC 9V999     COMP-3 VALUE 0.010.
+       01  WS-FIRST-OFFENSE-LATE-FEE       PIC 9(3)V99 COMP-3 VALUE 029.00.
+       01  WS-REPEAT-OFFENSE-LATE-FEE      PIC 9(3)V99 COMP-3 VALUE 040.00.
+       01  WS-OVER-LIMIT-FEE-AMOUNT        PIC 9(3)V99 COMP-3 VALUE 035.00.
+       01  WS-GRACE-PERIOD-DAYS            PIC 9(2)      COMP-3 VALUE 25.
+       01  WS-ANNUAL-FEE-AMOUNT            PIC 9(3)V99 COMP-3 VALUE 095.00.
+       01  WS-ANNUAL-FEE-CYCLE-MONTH       PIC 9(2)      VALUE 01.
+       01  WS-CURRENT-CYCLE-MONTH          PIC 9(2).
+
+       PROCEDURE DIVISION.
+
+       0000-MAIN-PROCESS.
+           PERFORM 1000-CALCULATE-SEGMENT-FINANCE-CHARGES
+           PERFORM 2000-ALLOCATE-PAYMENT-BY-APR-PRIORITY
+           PERFORM 3000-CALCULATE-MINIMUM-PAYMENT
+           PERFORM 4000-CHECK-OVER-LIMIT-AND-ASSESS-FEE
+           PERFORM 5000-ASSESS-LATE-FEE
+           PERFORM 6000-CHECK-ANNUAL-FEE-DUE
+           PERFORM 7000-CALCULATE-NEW-BALANCE
+           PERFORM 8000-PRINT-STATEMENT-SUMMARY
+           STOP RUN.
+
+       1000-CALCULATE-SEGMENT-FINANCE-CHARGES.
+      *    PURCHASES: STANDARD MONTHLY PERIODIC RATE = APR / 12
+           COMPUTE WS-PUR-FINANCE-CHARGE ROUNDED =
+               WS-PUR-AVG-DAILY-BALANCE * (WS-PUR-ANNUAL-PCT-RATE / 12)
+
+      *    CASH ADVANCE: NO GRACE PERIOD, ACCRUES FROM DATE OF ADVANCE
+           COMPUTE WS-CA-FINANCE-CHARGE ROUNDED =
+               WS-CA-AVG-DAILY-BALANCE * (WS-CA-ANNUAL-PCT-RATE / 12)
+
+      *    BALANCE TRANSFER: USE PROMOTIONAL APR UNTIL THE PROMO END
+      *    DATE HAS PASSED, THEN REVERT TO THE STANDARD APR
+           IF WS-STATEMENT-CYCLE-DATE > WS-BT-PROMO-END-DATE
+               SET BT-PROMO-EXPIRED TO TRUE
+               COMPUTE WS-BT-FINANCE-CHARGE ROUNDED =
+                   WS-BT-AVG-DAILY-BALANCE * (WS-BT-STANDARD-APR / 12)
+           ELSE
+               COMPUTE WS-BT-FINANCE-CHARGE ROUNDED =
+                   WS-BT-AVG-DAILY-BALANCE * (WS-BT-PROMO-APR / 12)
+           END-IF.
+
+       2000-ALLOCATE-PAYMENT-BY-APR-PRIORITY.
+      *    CARD ACT COMPLIANT ORDER: CASH ADVANCE (HIGHEST APR) FIRST,
+      *    THEN PURCHASES, THEN THE PROMOTIONAL BALANCE TRANSFER LAST
+      *    (LOWEST APR WHILE THE PROMO IS STILL ACTIVE)
+           MOVE WS-PAYMENT-RECEIVED-AMOUNT TO WS-REMAINING-PAYMENT
+
+           IF WS-REMAINING-PAYMENT > WS-CA-AVG-DAILY-BALANCE
+               MOVE WS-CA-AVG-DAILY-BALANCE TO WS-APPLIED-TO-CASH-ADVANCE
+           ELSE
+               MOVE WS-REMAINING-PAYMENT TO WS-APPLIED-TO-CASH-ADVANCE
+           END-IF
+           SUBTRACT WS-APPLIED-TO-CASH-ADVANCE FROM WS-REMAINING-PAYMENT
+
+           IF WS-REMAINING-PAYMENT > WS-PUR-AVG-DAILY-BALANCE
+               MOVE WS-PUR-AVG-DAILY-BALANCE TO WS-APPLIED-TO-PURCHASES
+           ELSE
+               MOVE WS-REMAINING-PAYMENT TO WS-APPLIED-TO-PURCHASES
+           END-IF
+           SUBTRACT WS-APPLIED-TO-PURCHASES FROM WS-REMAINING-PAYMENT
+
+           IF WS-REMAINING-PAYMENT > WS-BT-AVG-DAILY-BALANCE
+               MOVE WS-BT-AVG-DAILY-BALANCE TO WS-APPLIED-TO-BAL-TRANSFER
+           ELSE
+               MOVE WS-REMAINING-PAYMENT TO WS-APPLIED-TO-BAL-TRANSFER
+           END-IF
+           SUBTRACT WS-APPLIED-TO-BAL-TRANSFER FROM WS-REMAINING-PAYMENT.
+
+       3000-CALCULATE-MINIMUM-PAYMENT.
+      *    BASE MINIMUM: GREATER OF 2% OF NEW BALANCE OR THE FLAT
+      *    FLOOR AMOUNT, CAPPED AT THE NEW BALANCE
+           COMPUTE WS-MINIMUM-PAYMENT ROUNDED =
+               (WS-PUR-AVG-DAILY-BALANCE + WS-CA-AVG-DAILY-BALANCE +
+                WS-BT-AVG-DAILY-BALANCE) * WS-MIN-PAYMENT-PERCENT
+
+           IF WS-MINIMUM-PAYMENT < WS-MIN-PAYMENT-FLOOR
+               MOVE WS-MIN-PAYMENT-FLOOR TO WS-MINIMUM-PAYMENT
+           END-IF
+
+      *    ACCOUNTS MORE THAN 90 DAYS DELINQUENT ADD A 1% SURCHARGE
+      *    TO THE MINIMUM PAYMENT CALCULATION
+           IF DELINQUENT-OVER-90
+               COMPUTE WS-MINIMUM-PAYMENT ROUNDED =
+                   WS-MINIMUM-PAYMENT +
+                   ((WS-PUR-AVG-DAILY-BALANCE + WS-CA-AVG-DAILY-BALANCE +
+                     WS-BT-AVG-DAILY-BALANCE) *
+                    WS-DELINQUENCY-SURCHARGE-PCT)
+           END-IF
+
+           IF WS-MINIMUM-PAYMENT >
+                   (WS-PUR-AVG-DAILY-BALANCE + WS-CA-AVG-DAILY-BALANCE +
+                    WS-BT-AVG-DAILY-BALANCE)
+               COMPUTE WS-MINIMUM-PAYMENT =
+                   WS-PUR-AVG-DAILY-BALANCE + WS-CA-AVG-DAILY-BALANCE +
+                   WS-BT-AVG-DAILY-BALANCE
+           END-IF.
+
+       4000-CHECK-OVER-LIMIT-AND-ASSESS-FEE.
+           MOVE ZERO TO WS-OVER-LIMIT-FEE
+           IF (WS-PUR-AVG-DAILY-BALANCE + WS-CA-AVG-DAILY-BALANCE +
+               WS-BT-AVG-DAILY-BALANCE) > WS-CREDIT-LIMIT
+               IF OVER-LIMIT-OPTED-IN
+                   MOVE WS-OVER-LIMIT-FEE-AMOUNT TO WS-OVER-LIMIT-FEE
+               END-IF
+           END-IF.
+
+       5000-ASSESS-LATE-FEE.
+      *    FIRST LATE OFFENSE IN THE TRAILING 6 MONTHS: $29.
+      *    REPEAT OFFENSE WITHIN 6 MONTHS: $40. NO FEE WITHIN THE
+      *    GRACE PERIOD.
+           MOVE ZERO TO WS-LATE-FEE
+           IF WS-DAYS-PAST-DUE > WS-GRACE-PERIOD-DAYS
+               IF WS-CONSECUTIVE-LATE-MONTHS = 0
+                   MOVE WS-FIRST-OFFENSE-LATE-FEE TO WS-LATE-FEE
+               ELSE
+                   MOVE WS-REPEAT-OFFENSE-LATE-FEE TO WS-LATE-FEE
+               END-IF
+           END-IF.
+
+       6000-CHECK-ANNUAL-FEE-DUE.
+           MOVE ZERO TO WS-ANNUAL-FEE-DUE-THIS-CYCLE
+           MOVE WS-STATEMENT-CYCLE-DATE (5:2) TO WS-CURRENT-CYCLE-MONTH
+           IF WS-CURRENT-CYCLE-MONTH = WS-ANNUAL-FEE-CYCLE-MONTH
+               MOVE WS-ANNUAL-FEE-AMOUNT TO WS-ANNUAL-FEE-DUE-THIS-CYCLE
+           END-IF.
+
+       7000-CALCULATE-NEW-BALANCE.
+           COMPUTE WS-TOTAL-FINANCE-CHARGE =
+               WS-PUR-FINANCE-CHARGE + WS-CA-FINANCE-CHARGE +
+               WS-BT-FINANCE-CHARGE
+
+           COMPUTE WS-NEW-BALANCE =
+               WS-PREVIOUS-BALANCE + WS-TOTAL-FINANCE-CHARGE +
+               WS-LATE-FEE + WS-OVER-LIMIT-FEE +
+               WS-ANNUAL-FEE-DUE-THIS-CYCLE -
+               WS-PAYMENT-RECEIVED-AMOUNT.
+
+       8000-PRINT-STATEMENT-SUMMARY.
+           DISPLAY 'CARD: ' WS-CARD-NUMBER
+           DISPLAY 'PURCHASE FINANCE CHARGE: ' WS-PUR-FINANCE-CHARGE
+           DISPLAY 'CASH ADVANCE FINANCE CHARGE: ' WS-CA-FINANCE-CHARGE
+           DISPLAY 'BALANCE TRANSFER FINANCE CHARGE: '
+               WS-BT-FINANCE-CHARGE
+           DISPLAY 'TOTAL FINANCE CHARGE: ' WS-TOTAL-FINANCE-CHARGE
+           DISPLAY 'NEW BALANCE: ' WS-NEW-BALANCE
+           DISPLAY 'MINIMUM PAYMENT DUE: ' WS-MINIMUM-PAYMENT
+           DISPLAY 'LATE FEE ASSESSED: ' WS-LATE-FEE
+           DISPLAY 'OVER-LIMIT FEE ASSESSED: ' WS-OVER-LIMIT-FEE
+           DISPLAY 'ANNUAL FEE DUE THIS CYCLE: '
+               WS-ANNUAL-FEE-DUE-THIS-CYCLE.

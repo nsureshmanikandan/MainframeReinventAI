@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Backend data / logs (generated at runtime, not source)
+backend/data/
+*.log
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store

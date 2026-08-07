@@ -1,0 +1,55 @@
+:root {
+  --bg-app: #0b0d12;
+  --bg-panel: #12151c;
+  --bg-panel-alt: #161a23;
+  --bg-header: #0f1218;
+  --border: #262b36;
+  --text: #e6e8ec;
+  --text-muted: #8b93a3;
+  --accent: #0a84ff;
+  --accent-soft: rgba(10, 132, 255, 0.15);
+  --success: #2ecc71;
+  --success-soft: rgba(46, 204, 113, 0.15);
+  --warning: #f5a623;
+  --warning-soft: rgba(245, 166, 35, 0.15);
+  --danger: #f4515f;
+  --danger-soft: rgba(244, 81, 95, 0.15);
+  --sans: "Segoe UI", system-ui, Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  color-scheme: dark;
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg-app);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a303c;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

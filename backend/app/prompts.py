@@ -103,6 +103,22 @@ If the Python code defines a class with a constructor, instantiate it with \
 realistic values before asserting on results. If it raises exceptions for \
 invalid input, use `pytest.raises` to verify that.
 
+CRITICAL -- checksums, check digits, and modulus arithmetic (e.g. an ABA \
+routing-number checksum, a Luhn check digit): when a field must satisfy one \
+of these to reach the scenario you're actually testing (e.g. you want to test \
+the DAILY LIMIT rule, which requires a routing number that PASSES the \
+checksum first), you must verify the exact value you choose actually \
+satisfies the formula as written in the COBOL above -- do not reuse a \
+real-world number from memory (a real bank's published routing number, a \
+sample credit-card number, etc.) without re-deriving it, since it may not \
+satisfy the specific formula/values in THIS COBOL program. When in doubt, \
+default to the trivially-valid value for that field (e.g. an all-zero \
+routing number: every weighted term is 0, so a mod-10 checksum of 0 always \
+passes) rather than a value that merely looks realistic. A test with a wrong \
+fixture value fails for a reason that has nothing to do with the business \
+rule it claims to test -- worse than no test at all, because it looks like a \
+real defect.
+
 COBOL SOURCE (business rules to test):
 ```
 {code}

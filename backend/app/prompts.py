@@ -46,7 +46,7 @@ COBOL SOURCE:
     "convert_java": """You are a forward-engineering agent (Code Modernization \
 pillar). Convert the following COBOL program into equivalent, idiomatic Java. \
 Preserve business logic and numeric precision exactly (use BigDecimal for \
-currency/rate fields, not float/double). Package: com.amex.modernized. Output \
+currency/rate fields, not float/double). Package: com.example.modernized. Output \
 ONLY the Java code in a single fenced code block, no commentary outside the \
 code block.
 

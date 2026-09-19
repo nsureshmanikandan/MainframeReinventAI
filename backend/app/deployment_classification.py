@@ -76,7 +76,7 @@ business logic here.
 _JAVA_API_GUIDANCE = """\
 A Spring Boot REST controller exposing this logic as a callable endpoint \
 (this replaces a CICS transaction). Requirements: package \
-com.amex.modernized; use @RestController, @PostMapping, and \
+com.example.modernized; use @RestController, @PostMapping, and \
 @RequestBody/@ResponseBody with a request/response DTO class mirroring the \
 underlying class's fields; catch the module's own custom exception and \
 translate it to a 400 response via @ExceptionHandler or \

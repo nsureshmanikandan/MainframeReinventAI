@@ -519,7 +519,7 @@ def _add_result_to_zip(zf: zipfile.ZipFile, stem: str, backend_name: str, result
 
     if result.get("java_code"):
         class_name = _java_class_name(stem)
-        zf.writestr(f"{base}/java/com/amex/modernized/{class_name}.java", result["java_code"])
+        zf.writestr(f"{base}/java/com/example/modernized/{class_name}.java", result["java_code"])
 
     if result.get("python_code"):
         zf.writestr(f"{base}/python/{stem.lower()}.py", result["python_code"])
@@ -534,7 +534,7 @@ def _add_result_to_zip(zf: zipfile.ZipFile, stem: str, backend_name: str, result
         zf.writestr(f"{base}/python/{stem.lower()}_{suffix}.py", result["python_wrapper"])
 
     if result.get("java_wrapper"):
-        zf.writestr(f"{base}/java/com/amex/modernized/{_java_class_name(stem)}{suffix.title().replace('_', '')}.java", result["java_wrapper"])
+        zf.writestr(f"{base}/java/com/example/modernized/{_java_class_name(stem)}{suffix.title().replace('_', '')}.java", result["java_wrapper"])
 
 
 @app.get("/api/export/{filename}")

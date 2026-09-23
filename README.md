@@ -10,6 +10,7 @@ This is a hands-on proof of concept for **legacy mainframe modernization in the 
 
 ## Table of contents
 
+- [Screenshots](#screenshots)
 - [Why this exists](#why-this-exists)
 - [Key features](#key-features)
 - [Architecture](#architecture)
@@ -19,6 +20,36 @@ This is a hands-on proof of concept for **legacy mainframe modernization in the 
 - [Design principles](#design-principles)
 - [Known limitations](#known-limitations)
 - [Project structure](#project-structure)
+
+---
+
+## Screenshots
+
+All screenshots below are live captures of the running app against real generated output — not mockups. `CARDAUTH.cbl` (an online/API-classified program) run through Gemini end to end, and `ACHBATCH.cbl` (a batch-classified program) showing its Deployment tab.
+
+**Code Modernization** — COBOL, side by side with the real Gemini-generated Java, in the same pane:
+
+![Code Modernization](docs/screenshots/01_cardauth_code_modernization.png)
+
+**Quality Score** — a manually-audited score (not the model grading its own output), with an automatic staleness banner because the code shown above was regenerated after the audit date:
+
+![Quality Score](docs/screenshots/02_cardauth_quality_score.png)
+
+**Test Execution** — a real pytest suite, actually executed in a subprocess against the generated Python; every line below is a genuine pass, not a self-reported claim:
+
+![Test Execution](docs/screenshots/03_cardauth_test_execution.png)
+
+**Deployment (API)** — CARDAUTH classified as an online/REST target, with a real, downloadable FastAPI microservice generated from the converted Python:
+
+![Deployment — API](docs/screenshots/04_cardauth_deployment_api.png)
+
+**Traces** — a real OpenTelemetry waterfall (TracerProvider + SDK) showing every pipeline stage's actual duration and nesting for this run:
+
+![Traces](docs/screenshots/05_cardauth_traces.png)
+
+**Deployment (Batch)** — ACHBATCH classified as a batch target instead of an API, since it processes a file of many transactions rather than answering one caller in real time. This capture also happens to demonstrate the project's "never hide a failure" principle in the wild: Gemini had a real, transient outage while generating the Java wrapper for this screenshot — the Python wrapper succeeded and is shown below, and the Java failure is surfaced as a visible error rather than being silently reported as "completed" with empty content (an actual bug this session found and fixed in `run_generate_wrapper`):
+
+![Deployment — Batch](docs/screenshots/06_achbatch_deployment_batch.png)
 
 ---
 

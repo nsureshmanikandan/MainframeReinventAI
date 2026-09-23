@@ -18,6 +18,12 @@ import tempfile
 
 PYTEST_TIMEOUT_SECONDS = 30
 
+# Belt-and-suspenders: --color=no should already prevent pytest from emitting
+# ANSI codes (a bare `\x1b[32mPASSED\x1b[0m` broke the result-line regex
+# below, silently reporting 0/0 tests despite pytest itself passing all of
+# them) -- strip any that slip through anyway (e.g. a plugin forcing color).
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
 
 def execute_python_tests(
     python_code: str, pytest_code: str, module_name: str, timeout: int = PYTEST_TIMEOUT_SECONDS
@@ -42,7 +48,8 @@ def execute_python_tests(
         try:
             proc = subprocess.run(
                 [sys.executable, "-m", "pytest", test_filename,
-                 "-v", "--tb=short", "--no-header", "-p", "no:cacheprovider"],
+                 "-v", "--tb=short", "--no-header", "-p", "no:cacheprovider",
+                 "--color=no"],
                 cwd=tmp_path,
                 capture_output=True,
                 text=True,
@@ -67,7 +74,7 @@ def execute_python_tests(
                 "total": 0,
             }
 
-        output = proc.stdout + "\n" + proc.stderr
+        output = _ANSI_ESCAPE_RE.sub("", proc.stdout + "\n" + proc.stderr)
 
         tests = []
         for line in output.splitlines():

@@ -247,6 +247,7 @@ def run_generate_wrapper(filename: str, backend_name: str):
 
     python_wrapper = ""
     java_wrapper = ""
+    errors = []
 
     with tracing.traced_stage("generate_wrapper", filename, backend_name, model=model, style=style):
         if python_code:
@@ -258,6 +259,8 @@ def run_generate_wrapper(filename: str, backend_name: str):
                     converted_code=python_code,
                 )
                 python_wrapper = extract_code_block(raw) if raw else ""
+                if err or not python_wrapper:
+                    errors.append(f"python: {err or 'empty response'}")
 
         if java_code:
             with tracing.traced_stage("generate_wrapper_java", filename, backend_name, model=model):
@@ -268,10 +271,15 @@ def run_generate_wrapper(filename: str, backend_name: str):
                     converted_code=java_code,
                 )
                 java_wrapper = extract_code_block(raw) if raw else ""
+                if err or not java_wrapper:
+                    errors.append(f"java: {err or 'empty response'}")
 
+    # "completed" must mean the wrapper(s) genuinely exist -- a silently
+    # swallowed LLM failure (e.g. a transient 5xx) must not be reported as
+    # success with empty content sitting in python_wrapper/java_wrapper.
     db.upsert_result(
         filename, backend_name, status=result.get("status", "completed"),
-        wrapper_status="completed",
+        wrapper_status=f"error: {'; '.join(errors)}" if errors else "completed",
         python_wrapper=python_wrapper,
         java_wrapper=java_wrapper,
     )

@@ -4,9 +4,16 @@
     {
       "name": "mainframe-reinvent-ai-frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 5173,
-      "autoPort": true
+      "runtimeArgs": ["run", "dev", "--", "--port", "5174", "--strictPort"],
+      "port": 5174,
+      "cwd": "C:\\Users\\n.sureshmanikandan\\Repo1\\MainframeReinventAI\\frontend"
+    },
+    {
+      "name": "mainframe-reinvent-ai-backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--port", "8020"],
+      "port": 8020,
+      "cwd": "C:\\Users\\n.sureshmanikandan\\Repo1\\MainframeReinventAI\\backend"
     }
   ]
 }

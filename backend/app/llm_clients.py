@@ -6,15 +6,22 @@ import time
 
 import requests
 
-AZURE_BASE_URL = "https://agentforgeai-resource.services.ai.azure.com/openai/v1"
-AZURE_DEFAULT_MODEL = "gpt-5.6-sol"
+
+# Azure OpenAI resource details. This resource (sureshopenaichat) uses the
+# classic deployment-based REST shape --
+# {endpoint}/openai/deployments/{deployment}/chat/completions?api-version=...
+# -- NOT the v1 path (no deployment name in the URL, no api-version param)
+# that a previous, now-expired resource used. Don't "simplify" this back to
+# a v1 base_url without re-verifying against a live call first.
+AZURE_ENDPOINT = "https://sureshopenaichat.services.ai.azure.com"
+AZURE_API_VERSION = "2024-12-01-preview"
+AZURE_DEFAULT_MODEL = "gpt-5.4-mini"
 
 # Only models CONFIRMED as real, callable deployments on this Azure resource
-# (verified via direct API call -- the /v1/models list includes hundreds of
-# catalog entries that return DeploymentNotFound when actually invoked).
+# (verified via a direct API call returning a genuine completion, not just
+# assumed from a catalog/model list).
 AVAILABLE_AZURE_MODELS = [
-    {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol (recommended for enterprise modernization)"},
-    {"id": "gpt-5.4-mini", "label": "GPT-5.4 Mini (faster/cheaper, previous default)"},
+    {"id": "gpt-5.4-mini", "label": "GPT-5.4 Mini (Azure OpenAI)"},
 ]
 
 GEMINI_MODEL = "gemini-3.1-flash-lite"
@@ -81,15 +88,20 @@ def call_azure(prompt: str, max_tokens: int = 8000, model: str | None = None):
     if not key:
         return None, "AZURE_OPENAI_API_KEY not set"
 
+    deployment = model or AZURE_DEFAULT_MODEL
+    url = (
+        f"{AZURE_ENDPOINT}/openai/deployments/{deployment}/chat/completions"
+        f"?api-version={AZURE_API_VERSION}"
+    )
+
     budget = max_tokens
     last_finish_reason = None
     for attempt in range(MAX_TOKEN_ESCALATIONS + 1):
         try:
             resp = _post_with_retry(
-                f"{AZURE_BASE_URL}/chat/completions",
+                url,
                 headers={"api-key": key, "Content-Type": "application/json"},
                 json={
-                    "model": model or AZURE_DEFAULT_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_completion_tokens": budget,
                 },

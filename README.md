@@ -35,7 +35,7 @@ All screenshots below are live captures of the running app against real generate
 
 ![Quality Score](docs/screenshots/02_cardauth_quality_score.png)
 
-**Test Execution** — a real pytest suite, actually executed in a subprocess against the generated Python, for both backends. Azure's run is shown honestly at **32/34 passed** (not sanitized to a suspicious 100%) — the 2 failures turned out to be the test fixtures assuming a simpler rule outcome than the COBOL's actual multi-condition precedence produces on that exact input, the same class of issue documented in the `pytest_tests` prompt's checksum-verification requirement:
+**Test Execution** — a real pytest suite, actually executed in a subprocess against the generated Python, for both backends. Azure's run is shown honestly at **30/32 passed** (not sanitized to a suspicious 100%). Investigating the failures led to two real prompt improvements: the first attempt at a fix (tracing which of several COBOL rules fires first on a given input) actually made things *worse* — surfacing more attempted tests that still got a multi-factor calculation wrong (9/40 failed) — while a second, more targeted fix (require the test to show its derivation, step by step, for any computed value: an accumulating fraud score, a fee, a derived auth code) brought it back down to today's 2 failures, both still the same root cause (an accumulating score's arithmetic dropping one contributing term). Documented as an honest, current limit rather than iterated on indefinitely for diminishing returns:
 
 ![Test Execution](docs/screenshots/03_cardauth_test_execution.png)
 

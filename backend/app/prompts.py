@@ -131,21 +131,43 @@ If the Python code defines a class with a constructor, instantiate it with \
 realistic values before asserting on results. If it raises exceptions for \
 invalid input, use `pytest.raises` to verify that.
 
-CRITICAL -- checksums, check digits, and modulus arithmetic (e.g. an ABA \
-routing-number checksum, a Luhn check digit): when a field must satisfy one \
-of these to reach the scenario you're actually testing (e.g. you want to test \
-the DAILY LIMIT rule, which requires a routing number that PASSES the \
-checksum first), you must verify the exact value you choose actually \
-satisfies the formula as written in the COBOL above -- do not reuse a \
-real-world number from memory (a real bank's published routing number, a \
-sample credit-card number, etc.) without re-deriving it, since it may not \
-satisfy the specific formula/values in THIS COBOL program. When in doubt, \
-default to the trivially-valid value for that field (e.g. an all-zero \
-routing number: every weighted term is 0, so a mod-10 checksum of 0 always \
-passes) rather than a value that merely looks realistic. A test with a wrong \
-fixture value fails for a reason that has nothing to do with the business \
-rule it claims to test -- worse than no test at all, because it looks like a \
-real defect.
+CRITICAL -- any value in an assertion that is COMPUTED rather than a fixed \
+COBOL literal (checksums/check digits; an accumulating score built from \
+several independent point contributions, e.g. a fraud score; a code or ID \
+derived from substrings/digits of other fields, e.g. an auth code built from \
+part of the card number plus part of a timestamp; a fee that sums a \
+percentage plus a flat surcharge): NEVER assert a value you have not derived \
+yourself, step by step, in a comment directly above the assertion, using the \
+exact formula/fields from the COBOL above and the exact input values your \
+test constructs. This applies just as much to values you expect to STAY \
+unchanged (e.g. "fraud score should still be 0" or "this contribution \
+shouldn't apply") as to ones that change -- an accumulating score has no \
+default of 0; every contributing rule that could apply to your chosen input \
+must be individually checked and summed, not assumed absent. Show the full \
+sum (or full digit-by-digit derivation) as a comment, e.g. `# base 20 (high \
+amount) + 40 (card not present) + 0 (not intl) = 60`, then assert that \
+computed number -- never a round number or a value that merely looks \
+plausible. When in doubt for a checksum-style field specifically, default to \
+the trivially-valid value (e.g. an all-zero routing number: every weighted \
+term is 0, so a mod-10 checksum of 0 always passes) rather than a \
+real-world-looking number reused from memory.
+
+CRITICAL -- isolating ONE rule when several rules could fire on the same \
+input: most of these COBOL programs evaluate several independent conditions \
+against the same fields (e.g. a fraud score that accumulates from multiple \
+independent triggers, or several decline reasons that could each apply to \
+the same transaction). Before asserting the expected outcome of a test aimed \
+at rule X, trace through EVERY OTHER rule in the COBOL against the exact \
+input values you constructed -- if rule Y's condition is ALSO true for that \
+input, the real outcome reflects Y too (added to X's score, or reported \
+instead of X if Y is evaluated first), not X in isolation. Either (a) choose \
+input values that keep every other rule's condition false so only your \
+target rule fires, or (b) if multiple rules necessarily fire together for \
+the scenario you're testing, compute the combined expected outcome by \
+tracing all of them, not just the one you meant to isolate. A test with a \
+wrong fixture value fails for a reason that has nothing to do with the \
+business rule it claims to test -- worse than no test at all, because it \
+looks like a real defect.
 
 COBOL SOURCE (business rules to test):
 ```
